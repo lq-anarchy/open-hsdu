@@ -75,7 +75,11 @@ void fuzzOne(uint32_t seed, KeyMode mode, bool withFaults) {
         break;
       default: break;
     }
-    b.run(50 + rnd() % 6000, 50 + rnd() % 400);
+    // Evaluated in this order on purpose: the order of function arguments is unspecified in C++, and GCC and clang differ,
+    // so two rnd() calls in one argument list would make the scenario depend on the compiler.
+    const uint32_t stepUs = 50 + rnd() % 400;
+    const uint32_t totalUs = 50 + rnd() % 6000;
+    b.run(totalUs, stepUs);
   }
 
   // The inputs stop: release everything, give time for every buffer to drain and every timer to expire.

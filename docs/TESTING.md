@@ -34,7 +34,7 @@ CI (`.github/workflows/ci.yml`) runs the first four on every push.
 
 ### The five invariants the randomised test enforces
 
-1. a byte only ever *starts* on the wire while the chip is transmitting;
+1. no byte *starts* on the wire after the carrier has been dropped (a byte queued back-to-back that would start in the very microsecond of a forced cut is not distinguishable from one that is about to start);
 2. the carrier never exceeds the watchdog limit plus one tick;
 3. every byte the PC wrote is either sent once in order or counted in exactly one drop counter (`tx + noKey + full +
    fault == written`);

@@ -100,10 +100,12 @@ struct Bench {
     return n;
   }
 
-  // True if every byte the UART began to send began while the chip was transmitting.
+  // True if no byte began to be sent after the carrier was dropped: each began while the chip was transmitting, or in the
+  // very microsecond it was cut (a byte queued back-to-back behind another starts exactly when the last one ends, so a cut
+  // at that instant cannot tell "just started" from "about to start").
   bool allBytesStartedInTx() const {
     for (const auto& s : uart.sent)
-      if (!chip.transmittingAt(s.startUs)) return false;
+      if (!chip.transmittingAt(s.startUs) && !chip.transmittingAt(s.startUs - 1)) return false;
     return true;
   }
 
