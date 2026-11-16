@@ -1,0 +1,46 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  host-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug && cmake --build build -j
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+      - name: Build with sanitizers
+        run: cmake -S . -B build-san -DOPENHSDU_SANITIZE=ON && cmake --build build-san -j
+      - name: Test with sanitizers
+        run: ./build-san/openhsdu_tests
+
+  bench-tool:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pytest==9.2.0 pyserial==3.5
+      - run: python -m pytest -q tools
+
+  firmware:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install platformio==6.2.0
+      - run: pio run -d firmware -e esp32s3zero
+      - run: python tools/check_firmware_image.py firmware/.pio/build/esp32s3zero
+      - run: pio run -d firmware -e esp32s3zero_highpower
+      - run: python tools/check_firmware_image.py firmware/.pio/build/esp32s3zero_highpower

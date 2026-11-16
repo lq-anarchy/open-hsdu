@@ -1,0 +1,10 @@
+{
+  "name": "openhsdu-core",
+  "version": "0.1.0",
+  "description": "Portable core of open-hsdu: CC1101 driver, PTT/echo modem, console. No Arduino dependencies.",
+  "build": {
+    "srcDir": "src",
+    "includeDir": "include",
+    "flags": ["-std=gnu++17"]
+  }
+}
