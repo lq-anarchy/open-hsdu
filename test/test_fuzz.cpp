@@ -34,10 +34,13 @@ bool isSubsequence(const std::vector<uint8_t>& sub, const std::vector<uint8_t>& 
 
 void fuzzOne(uint32_t seed, KeyMode mode, bool withFaults) {
   std::mt19937 rng(seed);
+  // std::mt19937's result type is 32-bit on some platforms and 64-bit on others: fix it, so the arithmetic below
+  // (and its conversions) is the same everywhere.
+  auto rnd = [&rng]() { return static_cast<uint32_t>(rng()); };
   ModemConfig cfg;
   cfg.keyMode = mode;
   cfg.maxTxUs = 400000;  // short, so the watchdog is exercised too
-  Bench b(cfg, static_cast<uint32_t>(rng()));  // random clock start, so wrap-around is hit regularly
+  Bench b(cfg, static_cast<uint32_t>(rnd()));  // random clock start, so wrap-around is hit regularly
   REQUIRE(b.boot());
 
   std::vector<uint8_t> sentByHost;
@@ -46,33 +49,33 @@ void fuzzOne(uint32_t seed, KeyMode mode, bool withFaults) {
   b.lines(dtr, rts);
 
   for (int step = 0; step < 1500; ++step) {
-    switch (rng() % 12) {
-      case 0: dtr = !dtr || (rng() % 4 != 0); b.lines(dtr, rts); break;
+    switch (rnd() % 12) {
+      case 0: dtr = !dtr || (rnd() % 4 != 0); b.lines(dtr, rts); break;
       case 1:
       case 2: rts = !rts; b.lines(dtr, rts); break;
       case 3:
       case 4: {  // bytes from the PC, 0x00..0x7F
-        std::vector<uint8_t> v(rng() % 150);
-        for (auto& x : v) x = static_cast<uint8_t>(rng() & 0x7F);
+        std::vector<uint8_t> v(rnd() % 150);
+        for (auto& x : v) x = static_cast<uint8_t>(rnd() & 0x7F);
         b.pcWrite(v);
         sentByHost.insert(sentByHost.end(), v.begin(), v.end());
         break;
       }
       case 5: {  // bytes from the radio, 0x80..0xFF
-        std::vector<uint8_t> v(rng() % 60);
-        for (auto& x : v) x = static_cast<uint8_t>(0x80 | (rng() & 0x7F));
+        std::vector<uint8_t> v(rnd() % 60);
+        for (auto& x : v) x = static_cast<uint8_t>(0x80 | (rnd() & 0x7F));
         b.radioRx(v);
         injected.insert(injected.end(), v.begin(), v.end());
         break;
       }
-      case 6: b.host.blocked = (rng() % 3 == 0); break;
-      case 7: b.host.maxPerWrite = (rng() % 2) ? 1 + rng() % 70 : static_cast<size_t>(-1); break;
+      case 6: b.host.blocked = (rnd() % 3 == 0); break;
+      case 7: b.host.maxPerWrite = (rnd() % 2) ? 1 + rnd() % 70 : static_cast<size_t>(-1); break;
       case 8:
-        if (withFaults) b.chip.ignoreNextStrobes = static_cast<int>(rng() % 3);
+        if (withFaults) b.chip.ignoreNextStrobes = static_cast<int>(rnd() % 3);
         break;
       default: break;
     }
-    b.run(50 + rng() % 6000, 50 + rng() % 400);
+    b.run(50 + rnd() % 6000, 50 + rnd() % 400);
   }
 
   // The inputs stop: release everything, give time for every buffer to drain and every timer to expire.
