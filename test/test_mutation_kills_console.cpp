@@ -1,5 +1,6 @@
 // Tests that kill the console / power / profile mutants the existing suite lets through. Each one passes on the
 // unmodified code.
+#include <ios>
 #include <map>
 #include <string>
 

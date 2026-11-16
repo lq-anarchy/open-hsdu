@@ -1,6 +1,7 @@
 // The CC1101's equations against the numbers that were measured on the real link. Each test is a line of
 // docs/THEORY.md, "The chip's equations".
 #include <cmath>
+#include <initializer_list>
 
 #include "doctest.h"
 #include "openhsdu/cc1101_math.h"

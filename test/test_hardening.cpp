@@ -1,5 +1,6 @@
 // Regression tests for the problems an independent review found (datasheet, firmware, logic and docs reviewers),
 // one test per confirmed finding. Each of these failed against the first version of the code.
+#include <ios>
 #include <algorithm>
 
 #include "bench.h"

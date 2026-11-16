@@ -1,4 +1,5 @@
 // The register profiles: their values against the proven preset, and what each register decodes to.
+#include <ios>
 #include <cmath>
 #include <map>
 #include <set>

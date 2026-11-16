@@ -52,7 +52,7 @@ uint8_t MockCc1101::marc() {
 }
 
 uint8_t MockCc1101::stateAt(uint32_t t) const {
-  uint8_t s = history.empty() ? kMarcIdle : history.front().marc;
+  uint8_t s = history.empty() ? static_cast<uint8_t>(kMarcIdle) : history.front().marc;
   for (const StateChange& c : history) {
     if (static_cast<int32_t>(t - c.t) >= 0) s = c.marc;
     else break;

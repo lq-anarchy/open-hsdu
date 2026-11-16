@@ -33,31 +33,31 @@ void Modem::onLineState(bool dtr, bool rts) {
 }
 
 void Modem::onHostBytes(const uint8_t* data, size_t len) {
-  stats_.hostBytesIn += len;
+  stats_.hostBytesIn += static_cast<uint32_t>(len);
   lastHostByteAt_ = clock_.micros();
   // Bytes the radio cannot send now are dropped and counted, not queued to go out minutes later when it recovers.
   if (!radioReady_ || dataLockout_ || needRxRecovery_ || faultBackoff_) {
-    stats_.txDroppedFault += len;
+    stats_.txDroppedFault += static_cast<uint32_t>(len);
     return;
   }
   if (state_ == State::kRx && cfg_.keyMode == KeyMode::kRts && !rtsHolds()) {
-    stats_.txDroppedNoKey += len;
+    stats_.txDroppedNoKey += static_cast<uint32_t>(len);
     return;
   }
   const size_t stored = txBuf_.push(data, len);
-  stats_.txDroppedFull += len - stored;
+  stats_.txDroppedFull += static_cast<uint32_t>(len - stored);
 }
 
 void Modem::onUartRx(const uint8_t* data, size_t len) {
   if (state_ != State::kRx || needRxRecovery_) {
-    stats_.rxDiscardedTx += len;
+    stats_.rxDiscardedTx += static_cast<uint32_t>(len);
     return;
   }
   if (settling_ && elapsedUs(clock_.micros(), rxSince_) < cfg_.rxSettleUs) {
-    stats_.rxDiscardedSettle += len;
+    stats_.rxDiscardedSettle += static_cast<uint32_t>(len);
     return;
   }
-  stats_.rxBytes += len;
+  stats_.rxBytes += static_cast<uint32_t>(len);
   pushHost(data, len);
 }
 
@@ -77,7 +77,7 @@ bool Modem::sendBytes(const uint8_t* data, size_t len) {
   if (!radioReady_ || state_ != State::kRx || needRxRecovery_ || faultBackoff_ || len == 0) return false;
   forceData_ = true;
   const size_t stored = txBuf_.push(data, len);
-  stats_.txDroppedFull += len - stored;
+  stats_.txDroppedFull += static_cast<uint32_t>(len - stored);
   return stored == len;
 }
 
@@ -101,7 +101,7 @@ void Modem::startTx() {
     }
     faultBackoff_ = true;
     faultAt_ = clock_.micros();
-    stats_.txDroppedFault += txBuf_.size();
+    stats_.txDroppedFault += static_cast<uint32_t>(txBuf_.size());
     txBuf_.clear();
     forceData_ = false;
     testActive_ = false;
@@ -133,7 +133,7 @@ void Modem::stopTx() {
 
 void Modem::forceRx(bool dropTxBytes) {
   if (dropTxBytes) {
-    stats_.txDroppedFault += txBuf_.size();
+    stats_.txDroppedFault += static_cast<uint32_t>(txBuf_.size());
     txBuf_.clear();
     stats_.txAborted += static_cast<uint32_t>(uart_.abortTx());
   }
@@ -146,11 +146,11 @@ bool Modem::idleTx() const {
 
 void Modem::pushHost(const uint8_t* data, size_t len) {
   if (!dtr_) {
-    stats_.hostDroppedNoDtr += len;
+    stats_.hostDroppedNoDtr += static_cast<uint32_t>(len);
     return;
   }
   const size_t stored = hostOut_.push(data, len);
-  stats_.hostDroppedFull += len - stored;
+  stats_.hostDroppedFull += static_cast<uint32_t>(len - stored);
 }
 
 void Modem::flushHost() {
@@ -171,7 +171,7 @@ void Modem::pump() {
     const size_t n = txBuf_.peek(tmp, want);
     const size_t w = uart_.write(tmp, n);
     txBuf_.drop(w);
-    stats_.txBytes += w;
+    stats_.txBytes += static_cast<uint32_t>(w);
     room -= w;
     if (cfg_.echo && w > 0) pushHost(tmp, w);
     if (w < n) break;

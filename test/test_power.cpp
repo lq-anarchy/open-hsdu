@@ -1,4 +1,5 @@
 // The power table and the radiated-power arithmetic behind the defaults.
+#include <ios>
 #include <set>
 
 #include "doctest.h"
