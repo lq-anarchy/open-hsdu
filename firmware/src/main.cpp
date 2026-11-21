@@ -30,6 +30,7 @@
 #include "openhsdu/profiles.h"
 #include "openhsdu/version.h"
 #include "pins.h"
+#include "soc/rtc_cntl_reg.h"
 
 #ifndef OPENHSDU_UART_NUM
 #define OPENHSDU_UART_NUM 1
@@ -267,6 +268,7 @@ uint32_t gUsbPingAtMs = 0;
 void usbPong(void*) { gUsbPongs = gUsbPongs + 1; }  // runs in TinyUSB's task
 
 void usbWatchdog() {
+  if (gConsole.loaderRequested()) return;  // the loader hand-over takes USB down on purpose
   const uint32_t now = millis();
   if (gUsbPongs == gUsbPings) {
     if (now - gUsbPingAtMs < kUsbPingEveryMs) return;
@@ -284,21 +286,33 @@ void usbWatchdog() {
   esp_restart();
 }
 
-// `loader now` on the console: restart into the chip's ROM flash loader (the framework's own route for it, which the ROM
-// can be reset out of over USB, unlike a loader entered with the BOOT button). The reply gets 200 ms to leave first.
+// `loader now` on the console: restart into the chip's ROM flash loader, in three steps so the host always sees a clean
+// unplug and replug (tried on unit 1: switching straight over from the loop left Windows holding a dead port).
+//   1. 200 ms for the reply to leave, then a soft disconnect: the host removes the port.
+//   2. A second later the framework's own switch to the loader, run in TinyUSB's task as the framework itself does.
+//   3. If that has not restarted the chip within 3 s, set the loader flag and restart directly.
 uint32_t gLoaderAtMs = 0;
+uint8_t gLoaderStep = 0;
+
+void loaderInUsbTask(void*) { usb_persist_restart(RESTART_BOOTLOADER); }
 
 void loaderIfRequested() {
-  if (!gConsole.loaderRequested() || gModem.keyed()) return;
-  if (gLoaderAtMs == 0) {
-    gLoaderAtMs = millis() | 1u;
-    return;
+  if (!gConsole.loaderRequested()) return;
+  const uint32_t now = millis();
+  if (gLoaderStep == 0) {
+    if (gModem.keyed()) return;
+    gLoaderAtMs = now;
+    gLoaderStep = 1;
+  } else if (gLoaderStep == 1 && now - gLoaderAtMs >= 200) {
+    tud_disconnect();
+    gLoaderStep = 2;
+  } else if (gLoaderStep == 2 && now - gLoaderAtMs >= 1200) {
+    usbd_defer_func(loaderInUsbTask, nullptr, false);
+    gLoaderStep = 3;
+  } else if (gLoaderStep == 3 && now - gLoaderAtMs >= 4200) {
+    REG_WRITE(RTC_CNTL_OPTION1_REG, RTC_CNTL_FORCE_DOWNLOAD_BOOT);
+    esp_restart();
   }
-  if (millis() - gLoaderAtMs < 200) return;
-  // The framework's switch-over waits up to a second for the host's bus reset, longer than the loop watchdog allows:
-  // without this the watchdog resets the chip first and it simply starts the firmware again (seen on unit 1).
-  disableLoopWDT();
-  usb_persist_restart(RESTART_BOOTLOADER);
 }
 
 // DTR and RTS are polled from TinyUSB rather than taken from events, so the unplugged and suspended cases are
