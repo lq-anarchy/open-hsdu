@@ -55,6 +55,62 @@ TEST_CASE("twenty request/reply exchanges: every frame out once, every reply in 
   CHECK(b.modem->stats().rxDiscardedSettle == 0);
 }
 
+// The traffic that froze unit 1's USB on the bench, replayed against the core: a host that raises and drops RTS around
+// every frame while the key mode is `either`, a poll and its answer about four times a second, receiver noise in every
+// gap, for a whole game. The freeze was below this code (the USB stack), so this shows only that the modem itself
+// neither loses nor invents a byte, never sticks keyed and never trips a watchdog under that load.
+TEST_CASE("a whole game of polls: 1,200 keyed frames with answers and noise, nothing lost, nothing stuck") {
+  ModemConfig cfg;
+  cfg.keyMode = KeyMode::kEither;
+  Bench b(cfg);
+  REQUIRE(b.boot());
+  b.lines(true, false);
+  b.run(10000);
+
+  const int kExchanges = 1200;
+  uint32_t lcg = 12345;
+  auto next = [&lcg]() {
+    lcg = lcg * 1664525u + 1013904223u;
+    return static_cast<uint8_t>(lcg >> 24);
+  };
+  std::vector<uint8_t> expectedHost, expectedAir;
+  for (int i = 0; i < kExchanges; ++i) {
+    std::vector<uint8_t> frame(12);
+    for (auto& c : frame) c = next();
+    const auto wire = Bench::wireImage(frame);
+    b.lqSend(wire);
+    expectedAir.insert(expectedAir.end(), wire.begin(), wire.end());
+    expectedHost.insert(expectedHost.end(), wire.begin(), wire.end());  // the echo
+
+    b.run(20000);
+    std::vector<uint8_t> noise(static_cast<size_t>(1 + next() % 8));
+    for (auto& c : noise) c = next();
+    b.radioRx(noise);
+    b.run(2000);
+    expectedHost.insert(expectedHost.end(), noise.begin(), noise.end());
+
+    std::vector<uint8_t> answer(40);
+    for (auto& c : answer) c = next();
+    const auto reply = replyImage(answer);
+    b.radioRx(reply);
+    b.run(2000);
+    expectedHost.insert(expectedHost.end(), reply.begin(), reply.end());
+    REQUIRE_FALSE(b.modem->keyed());
+  }
+
+  const Modem::Stats& st = b.modem->stats();
+  CHECK(b.uart.bytes() == expectedAir);
+  CHECK(b.host.received == expectedHost);
+  CHECK(b.allBytesSentInTx());
+  CHECK(b.txWindows() == kExchanges);
+  CHECK(st.keyUps == static_cast<uint32_t>(kExchanges));
+  CHECK(st.watchdogTrips == 0);
+  CHECK(st.radioFaults == 0);
+  CHECK(st.unexpectedTx == 0);
+  CHECK(st.txDroppedNoKey + st.txDroppedFull + st.txDroppedFault + st.txAborted == 0);
+  CHECK(st.hostDroppedNoDtr + st.rxDiscardedTx + st.rxDiscardedSettle == 0);
+}
+
 TEST_CASE("turnaround: the radio is listening again within 5 ms of the PC releasing RTS, far inside the ~180 ms the packs allow") {
   ModemConfig cfg;
   cfg.keyMode = KeyMode::kRts;

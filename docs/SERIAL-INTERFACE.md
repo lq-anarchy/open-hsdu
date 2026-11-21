@@ -49,7 +49,7 @@ changes mode, so a later session cannot finish it by pressing Enter.
 | Command | Does |
 |---|---|
 | `ver` | version, active profile, key mode |
-| `status` | state, DTR/RTS, radio present, counters, drop counters, and a `boot:` line: why the chip last started, the boot count, and the last crash, watchdog or brownout reset kept in flash (a replug counts as a power-on, so this is how a reset before it is still seen) |
+| `status` | state, DTR/RTS, radio present, counters, drop counters, and a `boot:` line: why the chip last started, the boot count, and the last crash, watchdog or brownout reset kept in flash (a replug counts as a power-on, so this is how a reset before it is still seen), and `usb-stuck=N`: how often the firmware found the USB stack's task not running and restarted the chip to bring USB back |
 | `selftest` | reads the chip's identity, reads back the registers the profile sets (calibration-result bits excluded) and PATABLE, checks it is receiving; prints PASS or FAIL |
 | `rssi` | the received signal strength register and an approximate dBm (offset 74 dB assumed); use it to compare signals, not to measure them |
 | `reg <hex>` / `regs` | read one configuration register / dump all 47 |
@@ -58,6 +58,7 @@ changes mode, so a later session cannot finish it by pressing Enter.
 | `keymode [rts\|data\|either]` | show or set the key mode (stored in flash) |
 | `carrier [ms]` | key a plain unmodulated carrier on the mark tone: it lasts the time asked (but at least the 85 ms lead-in) **plus** the 80 ms tail, so about N + 80 ms and never less than about 165 ms; max 1000 ms |
 | `pattern [n]` | send up to 64 bytes of `0xAA` (the preamble byte): a clean tone pair for an SDR. The bytes go out on the air and are counted in `tx`; their echo is dropped (the port is the console, not the data port) |
+| `loader now` | restart into the chip's ROM flash loader, to upload firmware without the BOOT button (docs/HARDWARE.md). Only this exact line does it, and not while transmitting |
 
 The console cannot transmit anything but a carrier or `0xAA`. Commands that touch the chip are refused with
 `error: transmitting` while the carrier is up. A line longer than 80 characters, or containing a NUL, is refused whole.

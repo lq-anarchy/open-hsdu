@@ -13,6 +13,7 @@
 #include <Preferences.h>
 #include <USBCDC.h>
 
+#include "device/usbd_pvt.h"
 #include "driver/uart.h"
 #include "esp_system.h"
 #include "esp32-hal-tinyusb.h"
@@ -236,15 +237,64 @@ void recordBoot() {
   const uint32_t badCount = gPrefs.getUInt("badcount", 0);
   const auto badWhy = static_cast<esp_reset_reason_t>(gPrefs.getUChar("badwhy", 0));
   const uint32_t badBoot = gPrefs.getUInt("badboot", 0);
+  const uint32_t usbStuck = gPrefs.getUInt("usbstuck", 0);
   gPrefs.end();
+  int n;
   if (badCount == 0) {
-    snprintf(gBootInfo, sizeof(gBootInfo), "reset=%s boot=%u abnormal=0", resetName(why), static_cast<unsigned>(boots));
+    n = snprintf(gBootInfo, sizeof(gBootInfo), "reset=%s boot=%u abnormal=0", resetName(why),
+                 static_cast<unsigned>(boots));
   } else {
-    snprintf(gBootInfo, sizeof(gBootInfo), "reset=%s boot=%u abnormal=%u last=%s at boot %u", resetName(why),
-             static_cast<unsigned>(boots), static_cast<unsigned>(badCount), resetName(badWhy),
-             static_cast<unsigned>(badBoot));
+    n = snprintf(gBootInfo, sizeof(gBootInfo), "reset=%s boot=%u abnormal=%u last=%s at boot %u", resetName(why),
+                 static_cast<unsigned>(boots), static_cast<unsigned>(badCount), resetName(badWhy),
+                 static_cast<unsigned>(badBoot));
   }
+  if (n > 0 && static_cast<size_t>(n) < sizeof(gBootInfo))
+    snprintf(gBootInfo + n, sizeof(gBootInfo) - static_cast<size_t>(n), " usb-stuck=%u", static_cast<unsigned>(usbStuck));
   gConsole.setBootInfo(gBootInfo);
+}
+
+// USB watchdog. TinyUSB runs in its own task; if that task stops, the board stays listed on the host but every request
+// to it fails, and only a replug brings it back (seen on unit 1 under steady traffic). The loop asks that task to run a
+// one-line function; if it has not run within kUsbStuckMs the task is stuck, so count it in flash and restart the chip,
+// which brings USB up again. One request is outstanding at a time, so this adds at most one entry to TinyUSB's queue.
+constexpr uint32_t kUsbPingEveryMs = 250;
+constexpr uint32_t kUsbStuckMs = 2000;
+constexpr uint32_t kUsbStuckKeyedGraceMs = 3000;  // do not restart mid-transmission unless it will not end
+volatile uint32_t gUsbPongs = 0;
+uint32_t gUsbPings = 0;
+uint32_t gUsbPingAtMs = 0;
+
+void usbPong(void*) { gUsbPongs = gUsbPongs + 1; }  // runs in TinyUSB's task
+
+void usbWatchdog() {
+  const uint32_t now = millis();
+  if (gUsbPongs == gUsbPings) {
+    if (now - gUsbPingAtMs < kUsbPingEveryMs) return;
+    gUsbPings++;
+    gUsbPingAtMs = now;
+    usbd_defer_func(usbPong, nullptr, false);
+    return;
+  }
+  const uint32_t waited = now - gUsbPingAtMs;
+  if (waited < kUsbStuckMs) return;
+  if (gModem.keyed() && waited < kUsbStuckMs + kUsbStuckKeyedGraceMs) return;
+  gPrefs.begin("openhsdu", false);
+  gPrefs.putUInt("usbstuck", gPrefs.getUInt("usbstuck", 0) + 1);
+  gPrefs.end();
+  esp_restart();
+}
+
+// `loader now` on the console: restart into the chip's ROM flash loader (the framework's own route for it, which the ROM
+// can be reset out of over USB, unlike a loader entered with the BOOT button). The reply gets 200 ms to leave first.
+uint32_t gLoaderAtMs = 0;
+
+void loaderIfRequested() {
+  if (!gConsole.loaderRequested() || gModem.keyed()) return;
+  if (gLoaderAtMs == 0) {
+    gLoaderAtMs = millis() | 1u;
+    return;
+  }
+  if (millis() - gLoaderAtMs >= 200) usb_persist_restart(RESTART_BOOTLOADER);
 }
 
 // DTR and RTS are polled from TinyUSB rather than taken from events, so the unplugged and suspended cases are
@@ -281,7 +331,7 @@ void setup() {
   gMux.setConsole(&gConsole);
   gUart.begin();
 
-  dataPort.enableReboot(false);  // a DTR/RTS pattern must never reboot the board into its loader
+  dataPort.enableReboot(false);  // a DTR/RTS pattern must never reboot the board into its loader (`loader now` does)
   dataPort.setRxBufferSize(2048);
   dataPort.begin();
   USB.productName("open-hsdu");
@@ -318,5 +368,7 @@ void loop() {
   gModem.tick();
   gMux.poll();
   saveSettingsIfChanged();
+  usbWatchdog();
+  loaderIfRequested();
   yield();
 }

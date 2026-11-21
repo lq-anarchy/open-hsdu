@@ -45,8 +45,14 @@ pio run                       # compile (for 4 MB flash: see below)
 pio run -t upload             # hold BOOT while plugging the cable in, EVERY time
 ```
 
-The firmware disables the software route into the ROM loader so a stray DTR/RTS pattern cannot reboot the board, so
-**every upload needs BOOT held while plugging in**: upload, then unplug and replug (or press RESET) without BOOT.
+The firmware disables the DTR/RTS route into the ROM loader so a stray line pattern cannot reboot the board. Two ways in
+remain:
+
+- **`loader now` on the console** (115200 baud): the board restarts into the ROM loader, which appears as a different
+  serial device ("USB JTAG/serial debug unit"). Upload to that port; the upload tool can then reset the board back into
+  the firmware by itself. Nothing needs to be pressed.
+- **BOOT held while plugging in**: always works, also with no firmware or a broken one. Upload, then unplug and replug
+  (or press RESET) without BOOT: a loader entered with the button cannot be left over USB.
 
 Two environments: `esp32s3zero` (default; power capped at the low steps) and `esp32s3zero_highpower` (allows every
 PATABLE step; **for a dummy load or cabled bench set-up only, never an antenna**).
