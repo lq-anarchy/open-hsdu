@@ -231,6 +231,34 @@ TEST_CASE("while the transmitter is keyed the console will not touch the chip") 
   CHECK(r.b.chip.patable[0] == 0x01);
 }
 
+TEST_CASE("loader: only the exact line `loader now` asks for the flash loader, and never while transmitting") {
+  Rig r;
+  CHECK(r.say("loader").find("error") != std::string::npos);
+  CHECK(r.say("loader yes").find("error") != std::string::npos);
+  CHECK(r.say("loader nowx").find("error") != std::string::npos);
+  CHECK(r.say("loade now").find("unknown command") != std::string::npos);
+  CHECK(r.say("status").find("ok loader") == std::string::npos);
+  CHECK_FALSE(r.con.loaderRequested());
+
+  r.b.lines(true, true);  // keyed: refuse, the carrier must not be left up by a restart
+  r.b.run(5000);
+  REQUIRE(r.b.modem->keyed());
+  CHECK(r.say("loader now").find("error: transmitting") != std::string::npos);
+  CHECK_FALSE(r.con.loaderRequested());
+  r.b.lines(true, false);
+  r.b.run(200000);
+  REQUIRE_FALSE(r.b.modem->keyed());
+
+  CHECK(r.say("LOADER NOW").find("error") != std::string::npos);  // the command ignores case, the argument does not
+  CHECK_FALSE(r.con.loaderRequested());
+}
+
+TEST_CASE("loader now raises the request") {
+  Rig r;
+  CHECK(r.say("loader now") == "ok loader\n");
+  CHECK(r.con.loaderRequested());
+}
+
 TEST_CASE("unknown commands and empty lines") {
   Rig r;
   CHECK(r.say("frobnicate").find("unknown command 'frobnicate'") != std::string::npos);

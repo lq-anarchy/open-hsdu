@@ -28,6 +28,11 @@ class Console {
     overflow_ = false;
   }
 
+  // Set by `loader now`: the firmware should restart the chip into its ROM flash loader (so a new image can be written
+  // without pressing BOOT). The console only raises the flag; the firmware acts on it once the reply has gone out.
+  // Nothing but that exact console line raises it: no line-state pattern, no data-port byte.
+  bool loaderRequested() const { return loaderRequested_; }
+
   static constexpr size_t kMaxLine = 80;
   static constexpr uint32_t kMaxCarrierMs = 1000;
   static constexpr size_t kMaxPatternBytes = 64;
@@ -49,6 +54,7 @@ class Console {
   void cmdKeyMode(char* arg);
   void cmdCarrier(char* arg);
   void cmdPattern(char* arg);
+  void cmdLoader(char* arg);
 
   Device& dev_;
   Modem& modem_;
@@ -57,6 +63,7 @@ class Console {
   size_t len_ = 0;
   bool overflow_ = false;
   const char* bootInfo_ = nullptr;
+  bool loaderRequested_ = false;
 };
 
 }  // namespace openhsdu

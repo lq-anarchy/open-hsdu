@@ -13,6 +13,7 @@
 #include <Preferences.h>
 #include <USBCDC.h>
 
+#include "device/usbd_pvt.h"
 #include "driver/uart.h"
 #include "esp_system.h"
 #include "esp32-hal-tinyusb.h"
@@ -29,6 +30,7 @@
 #include "openhsdu/profiles.h"
 #include "openhsdu/version.h"
 #include "pins.h"
+#include "soc/rtc_cntl_reg.h"
 
 #ifndef OPENHSDU_UART_NUM
 #define OPENHSDU_UART_NUM 1
@@ -236,15 +238,81 @@ void recordBoot() {
   const uint32_t badCount = gPrefs.getUInt("badcount", 0);
   const auto badWhy = static_cast<esp_reset_reason_t>(gPrefs.getUChar("badwhy", 0));
   const uint32_t badBoot = gPrefs.getUInt("badboot", 0);
+  const uint32_t usbStuck = gPrefs.getUInt("usbstuck", 0);
   gPrefs.end();
+  int n;
   if (badCount == 0) {
-    snprintf(gBootInfo, sizeof(gBootInfo), "reset=%s boot=%u abnormal=0", resetName(why), static_cast<unsigned>(boots));
+    n = snprintf(gBootInfo, sizeof(gBootInfo), "reset=%s boot=%u abnormal=0", resetName(why),
+                 static_cast<unsigned>(boots));
   } else {
-    snprintf(gBootInfo, sizeof(gBootInfo), "reset=%s boot=%u abnormal=%u last=%s at boot %u", resetName(why),
-             static_cast<unsigned>(boots), static_cast<unsigned>(badCount), resetName(badWhy),
-             static_cast<unsigned>(badBoot));
+    n = snprintf(gBootInfo, sizeof(gBootInfo), "reset=%s boot=%u abnormal=%u last=%s at boot %u", resetName(why),
+                 static_cast<unsigned>(boots), static_cast<unsigned>(badCount), resetName(badWhy),
+                 static_cast<unsigned>(badBoot));
   }
+  if (n > 0 && static_cast<size_t>(n) < sizeof(gBootInfo))
+    snprintf(gBootInfo + n, sizeof(gBootInfo) - static_cast<size_t>(n), " usb-stuck=%u", static_cast<unsigned>(usbStuck));
   gConsole.setBootInfo(gBootInfo);
+}
+
+// USB watchdog. TinyUSB runs in its own task; if that task stops, the board stays listed on the host but every request
+// to it fails, and only a replug brings it back (seen on unit 1 under steady traffic). The loop asks that task to run a
+// one-line function; if it has not run within kUsbStuckMs the task is stuck, so count it in flash and restart the chip,
+// which brings USB up again. One request is outstanding at a time, so this adds at most one entry to TinyUSB's queue.
+constexpr uint32_t kUsbPingEveryMs = 250;
+constexpr uint32_t kUsbStuckMs = 2000;
+constexpr uint32_t kUsbStuckKeyedGraceMs = 3000;  // do not restart mid-transmission unless it will not end
+volatile uint32_t gUsbPongs = 0;
+uint32_t gUsbPings = 0;
+uint32_t gUsbPingAtMs = 0;
+
+void usbPong(void*) { gUsbPongs = gUsbPongs + 1; }  // runs in TinyUSB's task
+
+void usbWatchdog() {
+  if (gConsole.loaderRequested()) return;  // the loader hand-over takes USB down on purpose
+  const uint32_t now = millis();
+  if (gUsbPongs == gUsbPings) {
+    if (now - gUsbPingAtMs < kUsbPingEveryMs) return;
+    gUsbPings++;
+    gUsbPingAtMs = now;
+    usbd_defer_func(usbPong, nullptr, false);
+    return;
+  }
+  const uint32_t waited = now - gUsbPingAtMs;
+  if (waited < kUsbStuckMs) return;
+  if (gModem.keyed() && waited < kUsbStuckMs + kUsbStuckKeyedGraceMs) return;
+  gPrefs.begin("openhsdu", false);
+  gPrefs.putUInt("usbstuck", gPrefs.getUInt("usbstuck", 0) + 1);
+  gPrefs.end();
+  esp_restart();
+}
+
+// `loader now` on the console: restart into the chip's ROM flash loader, in three steps so the host always sees a clean
+// unplug and replug (tried on unit 1: switching straight over from the loop left Windows holding a dead port).
+//   1. 200 ms for the reply to leave, then a soft disconnect: the host removes the port.
+//   2. A second later the framework's own switch to the loader, run in TinyUSB's task as the framework itself does.
+//   3. If that has not restarted the chip within 3 s, set the loader flag and restart directly.
+uint32_t gLoaderAtMs = 0;
+uint8_t gLoaderStep = 0;
+
+void loaderInUsbTask(void*) { usb_persist_restart(RESTART_BOOTLOADER); }
+
+void loaderIfRequested() {
+  if (!gConsole.loaderRequested()) return;
+  const uint32_t now = millis();
+  if (gLoaderStep == 0) {
+    if (gModem.keyed()) return;
+    gLoaderAtMs = now;
+    gLoaderStep = 1;
+  } else if (gLoaderStep == 1 && now - gLoaderAtMs >= 200) {
+    tud_disconnect();
+    gLoaderStep = 2;
+  } else if (gLoaderStep == 2 && now - gLoaderAtMs >= 1200) {
+    usbd_defer_func(loaderInUsbTask, nullptr, false);
+    gLoaderStep = 3;
+  } else if (gLoaderStep == 3 && now - gLoaderAtMs >= 4200) {
+    REG_WRITE(RTC_CNTL_OPTION1_REG, RTC_CNTL_FORCE_DOWNLOAD_BOOT);
+    esp_restart();
+  }
 }
 
 // DTR and RTS are polled from TinyUSB rather than taken from events, so the unplugged and suspended cases are
@@ -281,7 +349,7 @@ void setup() {
   gMux.setConsole(&gConsole);
   gUart.begin();
 
-  dataPort.enableReboot(false);  // a DTR/RTS pattern must never reboot the board into its loader
+  dataPort.enableReboot(false);  // a DTR/RTS pattern must never reboot the board into its loader (`loader now` does)
   dataPort.setRxBufferSize(2048);
   dataPort.begin();
   USB.productName("open-hsdu");
@@ -318,5 +386,7 @@ void loop() {
   gModem.tick();
   gMux.poll();
   saveSettingsIfChanged();
+  usbWatchdog();
+  loaderIfRequested();
   yield();
 }

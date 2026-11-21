@@ -123,6 +123,7 @@ void Console::execute(char* line) {
   else if (std::strcmp(cmd, "keymode") == 0) cmdKeyMode(arg);
   else if (std::strcmp(cmd, "carrier") == 0) cmdCarrier(arg);
   else if (std::strcmp(cmd, "pattern") == 0) cmdPattern(arg);
+  else if (std::strcmp(cmd, "loader") == 0) cmdLoader(arg);
   else print("error: unknown command '%s' (try help)\n", cmd);
 }
 
@@ -131,6 +132,7 @@ void Console::cmdHelp() {
   print("power [hex] | powers | profile [name] | keymode [rts|data|either]\n");
   print("carrier [ms] (max %u) | pattern [bytes] (0xAA, max %u)\n",
         static_cast<unsigned>(kMaxCarrierMs), static_cast<unsigned>(kMaxPatternBytes));
+  print("loader now (restart into the chip's flash loader)\n");
 }
 
 void Console::cmdVersion() {
@@ -304,6 +306,17 @@ void Console::cmdPattern(char* arg) {
   std::memset(buf, 0xAA, sizeof(buf));
   if (!dev_.present() || !modem_.sendBytes(buf, n)) print("error: busy or radio missing\n");
   else print("ok pattern %u bytes\n", static_cast<unsigned>(n));
+}
+
+void Console::cmdLoader(char* arg) {
+  if (std::strcmp(arg, "now") != 0) {
+    print("error: type `loader now` (the board leaves this firmware until it is flashed or reset)\n");
+  } else if (modem_.keyed()) {
+    print("error: transmitting\n");
+  } else {
+    loaderRequested_ = true;
+    print("ok loader\n");
+  }
 }
 
 }  // namespace openhsdu
