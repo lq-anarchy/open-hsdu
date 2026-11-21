@@ -81,6 +81,22 @@ TEST_CASE("without an attenuator no step is anywhere near legal, which is why th
   CHECK(flipperLike.eirpDbm() - limit > 28.0);
 }
 
+TEST_CASE("bootPatable keeps a stored step only if it is allowed and within the cap") {
+  CHECK(bootPatable(0x00, kDefaultMaxChipDbm) == kDefaultPatable);  // nothing stored
+  CHECK(bootPatable(0xFF, 10.0) == kDefaultPatable);                // not a step
+  CHECK(bootPatable(0x11, kDefaultMaxChipDbm) == 0x11);             // -33.8 dBm, under the default cap
+  CHECK(bootPatable(0x34, 10.0) == 0x34);                           // -10 dBm on the high-power build
+  CHECK(bootPatable(0x34, kDefaultMaxChipDbm) == kDefaultPatable);  // same byte after going back to the default build
+  CHECK(bootPatable(0xC0, 10.0) == 0xC0);                           // the top step, exactly at the cap
+  size_t n = 0;
+  const PowerStep* steps = powerSteps(&n);
+  for (size_t i = 0; i < n; ++i) {
+    const uint8_t got = bootPatable(steps[i].patable, kDefaultMaxChipDbm);
+    REQUIRE(findPowerStep(got) != nullptr);
+    CHECK(findPowerStep(got)->chipDbm <= kDefaultMaxChipDbm);  // never boots above the cap
+  }
+}
+
 TEST_CASE("EirpBudget adds gains and subtracts losses") {
   const EirpBudget b{-10.0, 20.0, 3.0, 1.0};
   CHECK(b.eirpDbm() == doctest::Approx(-28.0));

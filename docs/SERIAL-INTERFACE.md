@@ -53,7 +53,7 @@ changes mode, so a later session cannot finish it by pressing Enter.
 | `selftest` | reads the chip's identity, reads back the registers the profile sets (calibration-result bits excluded) and PATABLE, checks it is receiving; prints PASS or FAIL |
 | `rssi` | the received signal strength register and an approximate dBm (offset 74 dB assumed); use it to compare signals, not to measure them |
 | `reg <hex>` / `regs` | read one configuration register / dump all 47 |
-| `power [hex]` / `powers` | show or set the PATABLE byte (only allowed steps at or below the build's cap) / list them |
+| `power [hex]` / `powers` | show or set the PATABLE byte (only allowed steps at or below the build's cap; stored in flash, and a stored step above the cap of the build that boots is replaced by the lowest step) / list them |
 | `profile [proven\|matched]` | show or switch the register profile (also works as a retry after a failed change, but not after a failed boot) |
 | `keymode [rts\|data\|either]` | show or set the key mode (stored in flash) |
 | `carrier [ms]` | key a plain unmodulated carrier on the mark tone: it lasts the time asked (but at least the 85 ms lead-in) **plus** the 80 ms tail, so about N + 80 ms and never less than about 165 ms; max 1000 ms |
