@@ -294,7 +294,11 @@ void loaderIfRequested() {
     gLoaderAtMs = millis() | 1u;
     return;
   }
-  if (millis() - gLoaderAtMs >= 200) usb_persist_restart(RESTART_BOOTLOADER);
+  if (millis() - gLoaderAtMs < 200) return;
+  // The framework's switch-over waits up to a second for the host's bus reset, longer than the loop watchdog allows:
+  // without this the watchdog resets the chip first and it simply starts the firmware again (seen on unit 1).
+  disableLoopWDT();
+  usb_persist_restart(RESTART_BOOTLOADER);
 }
 
 // DTR and RTS are polled from TinyUSB rather than taken from events, so the unplugged and suspended cases are
