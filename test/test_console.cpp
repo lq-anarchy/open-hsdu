@@ -65,6 +65,13 @@ TEST_CASE("status reflects traffic") {
   CHECK(s.find("state=tx-") != std::string::npos);
 }
 
+TEST_CASE("status prints the boot line only when the firmware set one") {
+  Rig r;
+  CHECK(r.say("status").find("boot:") == std::string::npos);
+  r.con.setBootInfo("reset=task-watchdog boots=7");
+  CHECK(r.say("status").find("boot: reset=task-watchdog boots=7\n") != std::string::npos);
+}
+
 TEST_CASE("selftest passes on a healthy chip") {
   Rig r;
   const std::string s = r.say("selftest");

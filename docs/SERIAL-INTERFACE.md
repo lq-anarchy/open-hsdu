@@ -49,7 +49,7 @@ changes mode, so a later session cannot finish it by pressing Enter.
 | Command | Does |
 |---|---|
 | `ver` | version, active profile, key mode |
-| `status` | state, DTR/RTS, radio present, counters, drop counters |
+| `status` | state, DTR/RTS, radio present, counters, drop counters, and a `boot:` line: why the chip last started, the boot count, and the last crash, watchdog or brownout reset kept in flash (a replug counts as a power-on, so this is how a reset before it is still seen) |
 | `selftest` | reads the chip's identity, reads back the registers the profile sets (calibration-result bits excluded) and PATABLE, checks it is receiving; prints PASS or FAIL |
 | `rssi` | the received signal strength register and an approximate dBm (offset 74 dB assumed); use it to compare signals, not to measure them |
 | `reg <hex>` / `regs` | read one configuration register / dump all 47 |
