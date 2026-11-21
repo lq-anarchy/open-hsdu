@@ -42,17 +42,22 @@ Keep the wires short (under 15 cm) and the antenna away from the board and from 
 ```
 cd firmware
 pio run                       # compile (for 4 MB flash: see below)
-pio run -t upload             # hold BOOT while plugging the cable in, EVERY time
+pio run -t upload             # first hold BOOT while plugging the cable in, or send `loader now` (below)
 ```
 
 The firmware disables the DTR/RTS route into the ROM loader so a stray line pattern cannot reboot the board. Two ways in
 remain:
 
-- **`loader now` on the console** (115200 baud): the board restarts into the ROM loader, which appears as a different
-  serial device ("USB JTAG/serial debug unit"). Upload to that port; the upload tool can then reset the board back into
-  the firmware by itself. Nothing needs to be pressed.
-- **BOOT held while plugging in**: always works, also with no firmware or a broken one. Upload, then unplug and replug
-  (or press RESET) without BOOT: a loader entered with the button cannot be left over USB.
+- **`loader now` on the console** (115200 baud): the board disconnects, then comes back as the ROM loader, a different
+  serial device ("USB JTAG/serial debug unit"), about two seconds later. Upload to that port. Nothing is pressed.
+- **BOOT held while plugging in**: always works, also with no firmware or a broken one.
+
+Either way the board is still in the loader after the upload. `python3 tools/leave_loader.py PORT` restarts it into the
+firmware over USB (it arms the chip's RTC watchdog; an ordinary reset over USB lands in the loader again when BOOT was
+used). Unplugging and replugging without BOOT does the same.
+
+Tried on unit 1 from Windows (2026-11-20), all without touching the board: `loader now`, upload with
+`esptool.py --before no_reset --after no_reset write_flash 0x10000 firmware.bin`, `leave_loader.py`, self-test PASS.
 
 Two environments: `esp32s3zero` (default; power capped at the low steps) and `esp32s3zero_highpower` (allows every
 PATABLE step; **for a dummy load or cabled bench set-up only, never an antenna**).

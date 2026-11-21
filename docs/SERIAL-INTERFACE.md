@@ -73,3 +73,17 @@ while switching).
 Because the console and the data port are the same port, `status` read at 115200 shows DTR/RTS as 0: the modem is told
 the port is closed while it is a console. To see whether RTS reaches the firmware use `tools/openhsdu_bench.py rts`,
 which checks it by behaviour.
+
+## Windows hosts: two things found on unit 1
+
+- **A lone RTS change does not reach the board.** The Windows CDC driver (usbser.sys) passes RTS on only when DTR is
+  written as well. A host that keys by RTS alone gets no transmission in key mode `rts`; use `keymode either` (or
+  `data`) and let the data key the radio.
+- **Do not change port settings around every frame.** .NET's `SerialPort` sends the whole port configuration to the
+  device again (SetCommState) on every `RtsEnable` or `DtrEnable` change. Done twice a frame at four frames a second,
+  that stopped the board's USB control channel after 56 to 205 frames: the board stayed listed, every request failed
+  with "A device attached to the system is not functioning", and only a replug brought it back. The chip did not reset
+  (`boot:` line) and TinyUSB's task kept running (`usb-stuck=0`), so the fault is in the control-request path of the
+  USB stack this firmware is built on (Arduino-ESP32 2.0.17) and is still open. The same traffic with RTS left alone
+  ran 873 frames, and 879 with RTS switched by `EscapeCommFunction` only (what pyserial does). Set the lines once when
+  the port is opened and leave them.
