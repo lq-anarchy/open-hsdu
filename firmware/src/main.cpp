@@ -14,6 +14,7 @@
 #include <USBCDC.h>
 
 #include "driver/uart.h"
+#include "esp_system.h"
 #include "esp32-hal-tinyusb.h"
 #include "esp_task_wdt.h"
 #include "hal/uart_ll.h"
@@ -198,6 +199,54 @@ void saveSettingsIfChanged() {
   }
 }
 
+// Why the chip started, kept in flash so that a reset nobody saw (a crash or watchdog, after which USB may not come back
+// until the board is replugged, and the replug itself counts as a power-on) can still be read afterwards with `status`.
+char gBootInfo[112];
+
+const char* resetName(esp_reset_reason_t r) {
+  switch (r) {
+    case ESP_RST_POWERON: return "power-on";
+    case ESP_RST_EXT: return "reset-pin";
+    case ESP_RST_SW: return "software";
+    case ESP_RST_PANIC: return "crash";
+    case ESP_RST_INT_WDT: return "interrupt-watchdog";
+    case ESP_RST_TASK_WDT: return "task-watchdog";
+    case ESP_RST_WDT: return "other-watchdog";
+    case ESP_RST_DEEPSLEEP: return "deep-sleep";
+    case ESP_RST_BROWNOUT: return "brownout";
+    default: return "other";
+  }
+}
+
+bool abnormalReset(esp_reset_reason_t r) {
+  return r == ESP_RST_PANIC || r == ESP_RST_INT_WDT || r == ESP_RST_TASK_WDT || r == ESP_RST_WDT ||
+         r == ESP_RST_BROWNOUT || r == ESP_RST_SW || r == ESP_RST_UNKNOWN;
+}
+
+void recordBoot() {
+  const esp_reset_reason_t why = esp_reset_reason();
+  gPrefs.begin("openhsdu", false);
+  const uint32_t boots = gPrefs.getUInt("boots", 0) + 1;
+  gPrefs.putUInt("boots", boots);
+  if (abnormalReset(why)) {
+    gPrefs.putUChar("badwhy", static_cast<uint8_t>(why));
+    gPrefs.putUInt("badboot", boots);
+    gPrefs.putUInt("badcount", gPrefs.getUInt("badcount", 0) + 1);
+  }
+  const uint32_t badCount = gPrefs.getUInt("badcount", 0);
+  const auto badWhy = static_cast<esp_reset_reason_t>(gPrefs.getUChar("badwhy", 0));
+  const uint32_t badBoot = gPrefs.getUInt("badboot", 0);
+  gPrefs.end();
+  if (badCount == 0) {
+    snprintf(gBootInfo, sizeof(gBootInfo), "reset=%s boot=%u abnormal=0", resetName(why), static_cast<unsigned>(boots));
+  } else {
+    snprintf(gBootInfo, sizeof(gBootInfo), "reset=%s boot=%u abnormal=%u last=%s at boot %u", resetName(why),
+             static_cast<unsigned>(boots), static_cast<unsigned>(badCount), resetName(badWhy),
+             static_cast<unsigned>(badBoot));
+  }
+  gConsole.setBootInfo(gBootInfo);
+}
+
 // DTR and RTS are polled from TinyUSB rather than taken from events, so the unplugged and suspended cases are
 // covered by the same line: when the bus is not ready both read as low, which drops RTS and ends any carrier.
 void pollUsbState() {
@@ -240,6 +289,7 @@ void setup() {
   USB.begin();
 
   loadKeyMode();
+  recordBoot();
 
   // The modem cannot key until begin() succeeds; if it fails, `status` over the console says radio=MISSING.
   if (gDevice.begin(profileProven(), loadPatable(), kMaxChipDbm)) gUart.connectTx();

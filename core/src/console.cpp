@@ -150,6 +150,7 @@ void Console::cmdStatus() {
         static_cast<unsigned>(s.txDroppedNoKey), static_cast<unsigned>(s.txDroppedFull),
         static_cast<unsigned>(s.txDroppedFault), static_cast<unsigned>(s.txAborted), static_cast<unsigned>(s.hostDroppedNoDtr),
         static_cast<unsigned>(s.rxDiscardedTx), static_cast<unsigned>(s.rxDiscardedSettle));
+  if (bootInfo_ != nullptr) print("boot: %s\n", bootInfo_);
 }
 
 void Console::cmdSelfTest() {

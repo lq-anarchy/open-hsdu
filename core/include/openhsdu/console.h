@@ -19,6 +19,9 @@ class Console {
   // Characters from the console port. A line ends at CR or LF; empty lines are ignored.
   void feed(const uint8_t* data, size_t len);
   void feedString(const char* text);
+  // A line the firmware fills in at boot (why the chip last reset, and the last abnormal reset kept in flash); `status`
+  // prints it. The text must outlive the console. nullptr (the default) prints nothing.
+  void setBootInfo(const char* text) { bootInfo_ = text; }
   // Forget a half-typed line (the port closed or changed mode: the next session must not finish it).
   void reset() {
     len_ = 0;
@@ -53,6 +56,7 @@ class Console {
   char line_[kMaxLine + 1] = {};
   size_t len_ = 0;
   bool overflow_ = false;
+  const char* bootInfo_ = nullptr;
 };
 
 }  // namespace openhsdu
