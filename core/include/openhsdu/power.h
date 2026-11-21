@@ -24,6 +24,11 @@ constexpr uint8_t kDefaultPatable = 0x01;
 // 47 CFR 15.209 general limit (see EirpBudget and the tests).
 constexpr double kDefaultMaxChipDbm = -33.0;
 
+// The step to start with at boot, given the one stored in flash (0x00 = nothing stored): the stored step if it is an
+// allowed step within this build's cap, otherwise the default. So a board that goes back to a lower-capped build, or
+// whose stored byte is damaged, boots at the lowest step instead of refusing to start its radio.
+uint8_t bootPatable(uint8_t stored, double maxChipDbm);
+
 // Radiated power estimate from the chip output, an inline attenuator, and the antenna. Nothing here sees
 // radiation from the board or wiring, which is why the real level has to be measured once.
 struct EirpBudget {

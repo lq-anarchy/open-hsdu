@@ -30,7 +30,9 @@ connector), 15.23 (whether this is "personal use"), or the interference rules.
 
 - **Default power is the lowest step in this project's table**, `PATABLE = 0x01` (about −36.5 dBm at the chip, nominal: TI's typical
   figure, not measured). With an inline 20 dB attenuator and a 2 dBi antenna that is about −54.5 dBm EIRP: 5.3 dB under
-  the 15.209 limit. The loudest step the default build allows (`0x11`, −33.8 dBm) leaves 2.6 dB.
+  the 15.209 limit. The loudest step the default build allows (`0x11`, −33.8 dBm) leaves 2.6 dB. A step set with
+  `power` is stored in flash and used again at the next boot, but only if the build that boots allows it: a board taken
+  back to the default build after a high-power one starts at `0x01`.
 - **The firmware refuses any step above −33 dBm** at boot and from the console unless built with
   `esp32s3zero_highpower`, and `Device::begin` will not start at a step above the cap. `PATABLE = 0x00` is excluded
   (its harmonics are stronger than its carrier).

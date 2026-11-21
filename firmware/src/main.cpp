@@ -142,7 +142,7 @@ UsbHost gHost;
 Cc1101 gRadio(gSpi, gClock);
 // Firmware default: key by RTS only, like the real HSDU. Bytes alone never transmit, so no program or operating-system
 // service that opens the port and writes (a modem probe, say) can put anything on the air. `keymode either` or `data`
-// is the documented fallback if RTS does not reach the firmware; the choice is stored in flash.
+// is the documented fallback if RTS does not reach the firmware; the choice is stored in flash, as is the power step.
 ModemConfig makeConfig() {
   ModemConfig c;
   c.keyMode = KeyMode::kRts;
@@ -159,6 +159,7 @@ uint32_t gLastBaud = 0xFFFFFFFFu;
 
 Preferences gPrefs;
 KeyMode gSavedMode = KeyMode::kRts;
+uint8_t gSavedPatable = kDefaultPatable;
 
 uint8_t encodeMode(KeyMode m) { return m == KeyMode::kData ? 1 : m == KeyMode::kEither ? 2 : 0; }
 
@@ -170,13 +171,31 @@ void loadKeyMode() {
   gModem.setKeyMode(gSavedMode);
 }
 
-// Flash is written only when the console changed the mode, and never while transmitting (a flash write stalls the CPU).
-void saveKeyModeIfChanged() {
-  if (gModem.keyMode() == gSavedMode || gModem.keyed()) return;
-  gPrefs.begin("openhsdu", false);
-  gPrefs.putUChar("keymode", encodeMode(gModem.keyMode()));
+// The power step set with `power` is kept too. bootPatable() falls back to the lowest step if the stored one is not
+// allowed by this build (a board taken back to the default build boots at its lowest step, not refused).
+uint8_t loadPatable() {
+  gPrefs.begin("openhsdu", true);
+  const uint8_t v = gPrefs.getUChar("patable", 0);
   gPrefs.end();
-  gSavedMode = gModem.keyMode();
+  gSavedPatable = bootPatable(v, kMaxChipDbm);
+  return gSavedPatable;
+}
+
+// Flash is written only when the console changed a setting, and never while transmitting (a flash write stalls the CPU).
+void saveSettingsIfChanged() {
+  if (gModem.keyed()) return;
+  if (gModem.keyMode() != gSavedMode) {
+    gPrefs.begin("openhsdu", false);
+    gPrefs.putUChar("keymode", encodeMode(gModem.keyMode()));
+    gPrefs.end();
+    gSavedMode = gModem.keyMode();
+  }
+  if (gDevice.present() && gDevice.patable() != gSavedPatable) {
+    gPrefs.begin("openhsdu", false);
+    gPrefs.putUChar("patable", gDevice.patable());
+    gPrefs.end();
+    gSavedPatable = gDevice.patable();
+  }
 }
 
 // DTR and RTS are polled from TinyUSB rather than taken from events, so the unplugged and suspended cases are
@@ -223,7 +242,7 @@ void setup() {
   loadKeyMode();
 
   // The modem cannot key until begin() succeeds; if it fails, `status` over the console says radio=MISSING.
-  if (gDevice.begin(profileProven(), kDefaultPatable, kMaxChipDbm)) gUart.connectTx();
+  if (gDevice.begin(profileProven(), loadPatable(), kMaxChipDbm)) gUart.connectTx();
 
   // A hardware backstop for the software watchdog in the modem: if loop() ever stops running, the chip resets
   // (the CC1101 itself keeps transmitting until the new boot resets it, about half a second).
@@ -248,6 +267,6 @@ void loop() {
 
   gModem.tick();
   gMux.poll();
-  saveKeyModeIfChanged();
+  saveSettingsIfChanged();
   yield();
 }

@@ -26,6 +26,11 @@ const PowerStep* findPowerStep(uint8_t patable) {
   return nullptr;
 }
 
+uint8_t bootPatable(uint8_t stored, double maxChipDbm) {
+  const PowerStep* s = findPowerStep(stored);
+  return s != nullptr && s->chipDbm <= maxChipDbm ? stored : kDefaultPatable;
+}
+
 double part15_209_limitEirpDbm() { return cc1101::eirpDbmFromFieldUvPerM(200.0, 3.0); }
 
 }  // namespace openhsdu
